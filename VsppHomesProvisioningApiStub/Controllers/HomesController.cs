@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -13,56 +12,104 @@ namespace VsppHomesProvisioningApiStub.Controllers
 {
     public class HomesController : ApiController
     {
-        public class ProvisionHome
+        private static readonly List<Home> Homes = new List<Home>
         {
-            [Required]
-            public string HomeId { get; set; }
-
-            [Required]
-            public string GeoId { get; set; }
-
-            [Required]
-            public long Quota { get; set; }
-        
-            public short QuotaType { get; set; }
-        
-            public short Type { get; set; }
-    
-        }
-
-        private static readonly List<ProvisionHome> m_Homes = new List<ProvisionHome>();
+            new Home
+            {
+                HomeId = "HomeIdAlreadyProvisioned",
+                GeoId = "ProvisionedGeoId"
+            }
+        };
 
         [HttpPost]
-        public async Task<HttpResponseMessage> PostProvisionHome(HttpRequestMessage request)
+        public async Task<HttpResponseMessage> ProvisionHome(HttpRequestMessage request)
         {
-            if (true)
-            {
-                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "");
-                throw new HttpResponseException(errorResponse);
-            }
-
             var data = await request.Content.ReadAsStringAsync();
             var document = XDocument.Parse(data);
             var provisionHomeElement = document.Root;
-            var homeId = provisionHomeElement.Attribute("HomeID").Value;
-            var geoId = provisionHomeElement.Attribute("GeoID").Value;
-            var quota = provisionHomeElement.Attribute("Quota").Value;
-            var quotaType = provisionHomeElement.Attribute("QuotaType")?.Value;
-            var type = provisionHomeElement.Attribute("Type")?.Value;
-            var provisionHome = new ProvisionHome
+            
+            if (provisionHomeElement == null)
             {
-                HomeId = homeId,
-                GeoId = geoId,
-                Quota = long.Parse(quota),
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "No root element");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            var homeIdAttribute = provisionHomeElement.Attribute("HomeID");
+            if (homeIdAttribute == null)
+            {
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "HomeID is required");
+                throw new HttpResponseException(errorResponse);
+            }
+            
+            if (homeIdAttribute.Value.Equals("BadHomeId"))
+            {
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "HomeID is invalid");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            if (Homes.Any(h => h.HomeId.Equals(homeIdAttribute.Value)))
+            {
+                var errorResponse = Request.CreateErrorResponse((HttpStatusCode)478, "HomeID already provisioned");
+                throw new HttpResponseException(errorResponse);
+            }
+            
+            var geoIdAttribute = provisionHomeElement.Attribute("GeoID");
+            if (geoIdAttribute == null)
+            {
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "GeoID is required");
+                throw new HttpResponseException(errorResponse);
+            }
+            
+            if (geoIdAttribute.Value.Equals("BadGeoId"))
+            {
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "GeoID is invalid");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            if (geoIdAttribute.Value.Equals("UnknownGeoId"))
+            {
+                var errorResponse = Request.CreateErrorResponse((HttpStatusCode)476, "Unknown GeoID");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            var quotaAttribute = provisionHomeElement.Attribute("Quota");
+            if (quotaAttribute == null)
+            {
+                var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "Quota is required");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            if (!long.TryParse(quotaAttribute.Value, out var quota))
+            {
+                var errorResponse = Request.CreateErrorResponse((HttpStatusCode)470, "Argument Validation Error");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            if (quota < 0)
+            {
+                var errorResponse = Request.CreateErrorResponse((HttpStatusCode)470, "Argument Validation Error");
+                throw new HttpResponseException(errorResponse);
+            }
+
+            var quotaType = provisionHomeElement.Attribute("QuotaType")?.Value ?? "1";
+
+            var recordingType = provisionHomeElement.Attribute("Type")?.Value ?? "3";
+
+            var provisionHome = new Home
+            {
+                HomeId = homeIdAttribute.Value,
+                GeoId = geoIdAttribute.Value,
+                Quota = quota,
                 QuotaType = short.Parse(quotaType),
-                Type = short.Parse(type)
+                RecordingType = short.Parse(recordingType)
             };
-            m_Homes.Add(provisionHome);
+
+            Homes.Add(provisionHome);
 
             return new HttpResponseMessage
             {
                 Content = new StringContent(
-                    @"<ProvisionHomeReply ManagerName=""Man1"" ManagerVIP=""192.168.5.6:5673"" />",
+                    @"<ProvisionHomeReply ManagerName=""StubManager"" ManagerVIP=""localhost:1234"" />",
                     Encoding.UTF8,
                     "text/xml"
                 )
@@ -70,31 +117,31 @@ namespace VsppHomesProvisioningApiStub.Controllers
         }
 
         // GET api/homes
-        public IEnumerable<string> Get()
+        public IEnumerable<Home> Get()
         {
-            return m_Homes.Select(home => home.HomeId);
+            return Homes;
         }
 
         // GET api/homes/5
-        public ProvisionHome Get(string id)
+        public Home Get(string id)
         {
-            return m_Homes.FirstOrDefault(h => h.HomeId == id);
+            return Homes.FirstOrDefault(h => h.HomeId == id);
         }
         
         // PUT api/homes/5
         public void Put(string id, [FromBody]string value)
         {
         }
-
-        // DELETE api/homes/5
+        
         [HttpDelete]
-        public IHttpActionResult DeleteDeprovisionHome(string id)
+        public IHttpActionResult DeprovisionHome(string id)
         {
-            var home = m_Homes.FirstOrDefault(h => h.HomeId == id);
+            var home = Homes.FirstOrDefault(h => h.HomeId == id);
             if (home == null) return StatusCode((HttpStatusCode)471);
             
-            m_Homes.Remove(home);
-            return Ok(); //HttpResponseMessage
+            Homes.Remove(home);
+
+            return Ok();
         }
     }
 }
