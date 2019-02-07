@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -12,14 +13,17 @@ namespace VsppHomesProvisioningApiStub.Controllers
 {
     public class HomesController : ApiController
     {
-        private static readonly List<Home> Homes = new List<Home>
+        private static readonly ConcurrentDictionary<string, Home> Homes = new ConcurrentDictionary<string, Home>();
+
+        public HomesController()
         {
-            new Home
+            var value = new Home
             {
                 HomeId = "HomeIdAlreadyProvisioned",
                 GeoId = "ProvisionedGeoId"
-            }
-        };
+            };
+            Homes.TryAdd("HomeIdAlreadyProvisioned", value);
+        }
 
         [HttpPost]
         public async Task<HttpResponseMessage> ProvisionHome(HttpRequestMessage request)
@@ -27,7 +31,7 @@ namespace VsppHomesProvisioningApiStub.Controllers
             var data = await request.Content.ReadAsStringAsync();
             var document = XDocument.Parse(data);
             var provisionHomeElement = document.Root;
-            
+
             if (provisionHomeElement == null)
             {
                 var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "No root element");
@@ -40,26 +44,26 @@ namespace VsppHomesProvisioningApiStub.Controllers
                 var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "HomeID is required");
                 throw new HttpResponseException(errorResponse);
             }
-            
+
             if (homeIdAttribute.Value.Equals("BadHomeId"))
             {
                 var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "HomeID is invalid");
                 throw new HttpResponseException(errorResponse);
             }
 
-            if (Homes.Any(h => h.HomeId.Equals(homeIdAttribute.Value)))
+            if (Homes.ContainsKey(homeIdAttribute.Value))
             {
                 var errorResponse = Request.CreateErrorResponse((HttpStatusCode)478, "HomeID already provisioned");
                 throw new HttpResponseException(errorResponse);
             }
-            
+
             var geoIdAttribute = provisionHomeElement.Attribute("GeoID");
             if (geoIdAttribute == null)
             {
                 var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "GeoID is required");
                 throw new HttpResponseException(errorResponse);
             }
-            
+
             if (geoIdAttribute.Value.Equals("BadGeoId"))
             {
                 var errorResponse = Request.CreateErrorResponse(HttpStatusCode.BadRequest, "GeoID is invalid");
@@ -104,7 +108,7 @@ namespace VsppHomesProvisioningApiStub.Controllers
                 RecordingType = short.Parse(recordingType)
             };
 
-            Homes.Add(provisionHome);
+            Homes.TryAdd(provisionHome.HomeId, provisionHome);
 
             return new HttpResponseMessage
             {
@@ -119,29 +123,25 @@ namespace VsppHomesProvisioningApiStub.Controllers
         // GET api/homes
         public IEnumerable<Home> Get()
         {
-            return Homes;
+            return Homes.Values;
         }
 
         // GET api/homes/5
         public Home Get(string id)
         {
-            return Homes.FirstOrDefault(h => h.HomeId == id);
+            Homes.TryGetValue(id, out var home);
+            return home;
         }
-        
-        // PUT api/homes/5
-        public void Put(string id, [FromBody]string value)
-        {
-        }
-        
+
         [HttpDelete]
         public IHttpActionResult DeprovisionHome(string id)
         {
-            var home = Homes.FirstOrDefault(h => h.HomeId == id);
-            if (home == null) return StatusCode((HttpStatusCode)471);
-            
-            Homes.Remove(home);
+            if (Homes.TryGetValue(id, out var home))
+            {
+                return Ok();
+            }
 
-            return Ok();
+            return StatusCode((HttpStatusCode)471);
         }
     }
 }
